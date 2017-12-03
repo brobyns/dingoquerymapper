@@ -77,7 +77,7 @@ class UriParser
     {
         $keys = array_pluck($this->queryParameters, 'key');
         $queryParameters = array_combine($keys, $this->queryParameters);
-       
+
         return $queryParameters[$key];
     }
 
@@ -102,9 +102,52 @@ class UriParser
             $this->queryParameters,
             function ($queryParameter) {
                 $key = $queryParameter['key'];
-                return (! in_array($key, $this->predefinedParams));
+                return (!in_array($key, $this->predefinedParams));
             }
         );
+    }
+
+    protected function parseFilter($filterParam)
+    {
+        $supportedPostfixes = [
+            'st' => '<',
+            'gt' => '>',
+            'min' => '>=',
+            'max' => '<=',
+            'lk' => 'like',
+            'not-lk' => 'not like',
+            'in' => 'IN',
+            'not-in' => 'NOT IN',
+            'not' => '!=',
+        ];
+        $supportedPrefixesStr = implode('|', $supportedPostfixes);
+        $supportedPostfixesStr = implode('|', array_keys($supportedPostfixes));
+
+        list($filterParamKey, $filterParamValue) = explode('=', $filterParam);
+        $keyMatches = [];
+        //Matches every parameter with an optional prefix and/or postfix
+        //e.g. not-title-lk, title-lk, not-title, title
+        $keyRegex = '/^(?:(' . $supportedPrefixesStr . ')-)?(.*?)(?:-(' . $supportedPostfixesStr . ')|$)/';
+        preg_match($keyRegex, $filterParamKey, $keyMatches);
+        if (!isset($keyMatches[3])) {
+            if (strtolower(trim($filterParamValue)) == 'null') {
+                $comparator = 'NULL';
+            } else {
+                $comparator = '=';
+            }
+        } else {
+            if (strtolower(trim($filterParamValue)) == 'null') {
+                $comparator = 'NOT NULL';
+            } else {
+                $comparator = $supportedPostfixes[$keyMatches[3]];
+            }
+        }
+
+        array_push($this->queryParameters, [
+            'key' => $keyMatches[2],
+            'operator' => $comparator,
+            'value' => $filterParamValue
+        ]);
     }
 
     /**
@@ -115,47 +158,7 @@ class UriParser
     private function setQueryParameters($query)
     {
         $queryParameters = array_filter(explode('&', $query));
-
-        array_map([$this, 'appendQueryParameter'], $queryParameters);
-    }
-
-    /**
-     * Appends one parameter to the builder
-     *
-     * @param $parameter
-     */
-    private function appendQueryParameter($parameter)
-    {
-        preg_match($this->pattern, $parameter, $matches);
-
-        if (empty($matches)) {
-            return;
-        }
-
-        $operator = $matches[0];
-
-        list($key, $value) = explode($operator, $parameter);
-
-        if (strlen($value) == 0) {
-            return;
-        }
-
-        if (( ! $this->isPredefinedParameter($key)) && $this->isLikeQuery($value)) {
-            if ($operator == '=') {
-                $operator = 'like';
-            }
-            if ($operator == '!=') {
-                $operator = 'not like';
-            }
-
-            $value = str_replace('*', '%', $value);
-        }
-
-        $this->queryParameters[] = [
-            'key' => $key,
-            'operator' => $operator,
-            'value' => $value
-        ];
+        array_map([$this, 'parseFilter'], $queryParameters);
     }
 
     /**
@@ -188,29 +191,5 @@ class UriParser
         $keys = array_pluck($this->queryParameters, 'key');
 
         return (in_array($key, $keys));
-    }
-
-    /**
-     * Checks, if the query parameter contains an asteriks (*) symbol and must be treated as like parameter
-     *
-     * @param $query
-     * @return int
-     */
-    private function isLikeQuery($query)
-    {
-        $pattern = "/^\*|\*$/";
-
-        return (preg_match($pattern, $query, $matches));
-    }
-
-    /**
-     * Checks if the key is a predefined parameter
-     *
-     * @param $key
-     * @return bool
-     */
-    private function isPredefinedParameter($key)
-    {
-        return (in_array($key, $this->predefinedParams));
     }
 }
