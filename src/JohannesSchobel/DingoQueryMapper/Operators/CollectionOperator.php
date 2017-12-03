@@ -124,15 +124,15 @@ class CollectionOperator implements Operations
         // now check if the operator was "(not) like"?
         if (strpos($operator, 'like') !== false) {
             $value = str_replace('%', '', $value);
-            $rule = "substr('%s', 0, strlen('%s')) %s '%s'"; // haystack, $needle, $comparable, $needle
-            $expectedResult = '===';
+            $rule = "strpos('%s', '%s') %s false";
+            $expectedResult = '!==';
 
-            if (stripos($operator, 'not') !== false) {
+            if (strpos($operator, 'not') !== false) {
                 // it is a NOT LIKE operator
-                $expectedResult = '!==';
+                $expectedResult = '===';
             }
 
-            $rule = sprintf($rule, $key, $value, $expectedResult, $value);
+            $rule = sprintf($rule, $key, $value, $expectedResult);
         }
 
         return $rule;
